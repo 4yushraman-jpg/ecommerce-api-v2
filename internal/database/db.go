@@ -2,8 +2,7 @@ package database
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"errors"
 	"os"
 	"time"
 
@@ -11,24 +10,24 @@ import (
 )
 
 func ConnectDB() (*pgxpool.Pool, error) {
-	dbUrl := os.Getenv("DATABASE_URL")
-	if dbUrl == "" {
-		log.Fatal("DATABASE_URL environment variable is not set")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		return nil, errors.New("DATABASE_URL is not set")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, dbUrl)
+	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		return nil, fmt.Errorf("unable to connect to database: %v", err)
+		return nil, err
 	}
 
 	err = pool.Ping(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to ping database: %v", err)
+		pool.Close()
+		return nil, err
 	}
 
-	fmt.Println("Connected to PostgreSQL successfully!")
 	return pool, nil
 }

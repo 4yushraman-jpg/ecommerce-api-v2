@@ -2,31 +2,45 @@ package handlers
 
 import (
 	"ecommerce-api-v2/internal/models"
-	"ecommerce-api-v2/internal/service"
 	"encoding/json"
+	"errors"
 	"net/http"
-	"os"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthHandler struct {
-	Service *service.UserService
+type UserHandler struct {
+	DB        *pgxpool.Pool
+	JWTSecret []byte
 }
 
-func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var req models.AuthRequest
+func (h *UserHandler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req models.RegisterUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Email == "" || req.Password == "" {
+		http.Error(w, "Email or password can't be empty", http.StatusBadRequest)
 		return
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 	if err != nil {
-		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		http.Error(w, "Server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -37,13 +51,28 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Role:         "customer",
 	}
 
-	err = h.Service.CreateUser(r.Context(), newUser)
+	query := `
+        INSERT INTO users (id, email, password_hash, role)
+        VALUES ($1, $2, $3, $4)
+    `
+
+	_, err = h.DB.Exec(
+		r.Context(),
+		query,
+		newUser.ID,
+		newUser.Email,
+		newUser.PasswordHash,
+		newUser.Role,
+	)
+
 	if err != nil {
-		if err.Error() == "Email already exists" {
-			http.Error(w, err.Error(), http.StatusConflict)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "Email already in use", http.StatusConflict)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+
+		http.Error(w, "Could not create user", http.StatusInternalServerError)
 		return
 	}
 
@@ -54,33 +83,59 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req models.AuthRequest
+func (h *UserHandler) LoginUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req models.LoginUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.Service.GetUserByEmail(r.Context(), req.Email)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Email == "" || req.Password == "" {
+		http.Error(w, "Email or password can't be empty", http.StatusBadRequest)
+		return
+	}
+
+	var user models.User
+	query := `SELECT id, email, password_hash, role FROM users WHERE email = $1`
+
+	err := h.DB.QueryRow(
+		r.Context(),
+		query,
+		req.Email,
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role)
+
 	if err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID.String(),
-		"role":    user.Role,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(),
-	})
-
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
 	if err != nil {
-		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := models.Claims{
+		UserID: user.ID,
+		Role:   user.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims)
+
+	tokenString, err := token.SignedString(h.JWTSecret)
+	if err != nil {
+		http.Error(w, "Could not generate token", http.StatusInternalServerError)
 		return
 	}
 
