@@ -45,6 +45,14 @@ func main() {
 		DB: dbPool,
 	}
 
+	cartHandler := &handlers.CartHandler{
+		DB: dbPool,
+	}
+
+	orderHandler := &handlers.OrderHandler{
+		DB: dbPool,
+	}
+
 	r := chi.NewRouter()
 
 	// // Essential Middlewares
@@ -67,12 +75,21 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware([]byte(jwtSecret)))
 
+			r.Post("/cart", cartHandler.AddToCartHandler)
+			r.Get("/cart", cartHandler.GetCartHandler)
+			r.Delete("/cart/{product_id}", cartHandler.RemoveFromCartHandler)
+
+			r.Post("/checkout", orderHandler.CheckoutHandler)
+			r.Get("/orders", orderHandler.GetOrderHistoryHandler)
+
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.AdminOnlyMiddleware)
 
 				r.Post("/products", productHandler.CreateProductHandler)
 				r.Put("/products/{id}", productHandler.UpdateProductHandler)
 				r.Delete("/products/{id}", productHandler.DeleteProductHandler)
+
+				r.Put("/orders/{id}/status", orderHandler.UpdateOrderStatusHandler)
 			})
 		})
 	})

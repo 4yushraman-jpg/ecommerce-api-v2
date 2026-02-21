@@ -84,3 +84,48 @@ type CreateProductRequest struct {
 	Price         int    `json:"price"`
 	StockQuantity int    `json:"stock_quantity"`
 }
+
+type AddToCartRequest struct {
+	ProductID string `json:"product_id"`
+	Quantity  int    `json:"quantity"`
+}
+
+type CartItemResponse struct {
+	CartItemID string `json:"cart_item_id"`
+	ProductID  string `json:"product_id"`
+	Name       string `json:"name"`
+	Price      int    `json:"price"`
+	Quantity   int    `json:"quantity"`
+	Subtotal   int    `json:"subtotal"`
+}
+
+type CartResponse struct {
+	Items      []CartItemResponse `json:"items"`
+	TotalPrice int                `json:"total_price"`
+}
+
+type CheckoutResponse struct {
+	OrderID     string `json:"order_id"`
+	TotalAmount int    `json:"total_amount"`
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+}
+
+type OrderHistoryItemResponse struct {
+	ProductID       string `json:"product_id"`
+	ProductName     string `json:"product_name"`
+	Quantity        int    `json:"quantity"`
+	PriceAtPurchase int    `json:"price_at_purchase"`
+}
+
+type OrderHistoryResponse struct {
+	OrderID     string                     `json:"order_id"`
+	TotalAmount int                        `json:"total_amount"`
+	Status      string                     `json:"status"`
+	CreatedAt   time.Time                  `json:"created_at"`
+	Items       []OrderHistoryItemResponse `json:"items"`
+}
+
+type UpdateOrderStatusRequest struct {
+	Status string `json:"status"`
+}
