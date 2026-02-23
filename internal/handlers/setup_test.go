@@ -8,7 +8,7 @@ import (
 )
 
 func setupTestDB() *pgxpool.Pool {
-	dsn := "postgres://postgres:Ay%40260205@localhost:5432/ecommerce_test"
+	dsn := "postgres://user:password@localhost:5432/ecommerce_test"
 
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
