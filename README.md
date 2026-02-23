@@ -97,4 +97,4 @@ Admin-only routes require a user with `role: "admin"`.
 - **Database** — [pgx](https://github.com/jackc/pgx/v5)
 - **JWT** — [golang-jwt/jwt](https://github.com/golang-jwt/jwt)
 - **Env** — [godotenv](https://github.com/joho/godotenv)
--**Project URL** — [project URL](https://roadmap.sh/projects/ecommerce-api)
+- **Project URL** — [project URL](https://roadmap.sh/projects/ecommerce-api)
